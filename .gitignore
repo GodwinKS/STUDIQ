@@ -6,4 +6,3 @@ coverage/
 *.log
 .env*
 !.env.example
-saathi_env/

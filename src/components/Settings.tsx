@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Shield, Cpu, Cloud, Globe, AlertCircle, Save, CheckCircle2, XCircle } from 'lucide-react';
 import { isLocalMode, setLocalMode, getLocalModel, setLocalModel } from '../lib/gemini';
+import { cn } from '../utils';
 
 export function Settings() {
   const [isLocal, setIsLocal] = useState(isLocalMode());
@@ -97,23 +98,38 @@ export function Settings() {
           <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/10 blur-[60px] -mr-16 -mt-16" />
           
           <div className="flex justify-between items-start mb-6">
-            <div className={`p-4 rounded-2xl bg-white/10`}>
-              <Cpu className="text-white" />
+            <div className={`p-4 rounded-2xl ${isLocal ? 'bg-white/10' : 'bg-blue-500/20'}`}>
+              {isLocal ? <Cpu className="text-white" /> : <Cloud className="text-blue-400" />}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono uppercase tracking-widest opacity-60">Privacy: Maximum (Offline)</span>
-              <div className="w-2.5 h-2.5 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.5)]" />
+              <span className="text-[10px] font-mono uppercase tracking-widest opacity-60">
+                Mode: {isLocal ? 'Offline (Privacy First)' : 'Cloud (Maximum Intel)'}
+              </span>
+              <div className={cn(
+                "w-2.5 h-2.5 rounded-full shadow-[0_0_10px_rgba(74,222,128,0.5)]",
+                isLocal ? "bg-green-400" : "bg-blue-400"
+              )} />
             </div>
           </div>
           
-          <h3 className="text-2xl font-bold mb-3">Saathi Offline Engine</h3>
+          <h3 className="text-2xl font-bold mb-3">AI Intelligence Engine</h3>
           <p className="text-sm mb-8 leading-relaxed text-white/60">
-            Saathi-OS is locked in high-privacy offline mode. All vision analysis and transcription happens 100% on your device using local hardware.
+            {isLocal 
+              ? "Saathi-OS is in high-privacy offline mode. All vision analysis happens 100% on your device. Note: small local models may produce shorter explanations."
+              : "Connected to Gemini 2.0 Cloud. Provides highly detailed, structured study notes and advanced reasoning for complex diagrams."}
           </p>
 
-          <div className="w-full py-4 rounded-2xl font-bold text-sm bg-white/5 text-white/40 text-center border border-white/10 uppercase tracking-widest">
-            Hardware Mode Enforced
-          </div>
+          <button
+            onClick={() => handleToggle(!isLocal)}
+            className={cn(
+              "w-full py-4 rounded-2xl font-bold text-sm transition-all uppercase tracking-widest border",
+              isLocal 
+                ? "bg-white text-black border-white hover:bg-white/90" 
+                : "bg-blue-600 text-white border-blue-500 hover:bg-blue-700"
+            )}
+          >
+            {isLocal ? "Switch to Cloud Mode" : "Switch to Local Mode"}
+          </button>
         </div>
       </div>
 
@@ -137,9 +153,10 @@ export function Settings() {
                 />
                 <div className="flex flex-wrap gap-2 py-2">
                   {[
-                    { id: 'moondream', label: 'moondream (Vision - 0.8GB)', color: 'bg-green-100 text-green-700' },
-                    { id: 'llava', label: 'llava (Vision - 4.5GB)', color: 'bg-blue-100 text-blue-700' },
-                    { id: 'gemma:2b', label: 'gemma:2b (Text - 1.6GB)', color: 'bg-purple-100 text-purple-700' }
+                    { id: 'moondream', label: 'moondream (Fast Vision - 0.8GB)', color: 'bg-green-100 text-green-700' },
+                    { id: 'llava', label: 'llava (Strong Vision - 4.5GB)', color: 'bg-blue-100 text-blue-700' },
+                    { id: 'gemma2:9b', label: 'gemma2:9b (Best Notes - 5.4GB)', color: 'bg-purple-100 text-purple-700' },
+                    { id: 'llama3:8b', label: 'llama3:8b (Deep Reasoning - 4.7GB)', color: 'bg-orange-100 text-orange-700' }
                   ].map(m => (
                     <button 
                       key={m.id}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, CartesianGrid } from 'recharts';
 import { Flame, Target, TrendingUp, AlertCircle, Terminal, Activity, Cpu, Cloud } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { fetchWithRetry } from '../lib/api';
+import { cn } from '../utils';
+import { fetchWithRetry, safeJson } from '../lib/api';
 import { useSaathiSettings } from '../lib/gemini';
 
 export function Dashboard() {
@@ -31,17 +31,9 @@ export function Dashboard() {
           return; // Don't throw, just wait for next poll if it's a transient 404/500
         }
 
-        const contentTypeS = sessionRes.headers.get("content-type") || "";
-        const contentTypeL = logRes.headers.get("content-type") || "";
-        
-        if (!contentTypeS.includes("application/json") || !contentTypeL.includes("application/json")) {
-          console.error("Non-JSON Response from API during poll.");
-          return; 
-        }
-
         const [sessionData, logData] = await Promise.all([
-          sessionRes.json(),
-          logRes.json()
+          safeJson(sessionRes),
+          safeJson(logRes)
         ]);
         
         setSessions(sessionData);

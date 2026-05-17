@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Brain, BookOpen, MessageCircle, Settings as SettingsIcon, Shield, Clock, FileText, Headphones, Sparkles, Wifi, WifiOff } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '../utils';
 import { isLocalMode, setLocalMode } from '../lib/gemini';
+import { safeJson } from '../lib/api';
 
 interface SidebarProps {
   activeTab: string;
@@ -33,7 +34,7 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     const checkStatus = async () => {
       try {
         const res = await fetch('/api/monitor');
-        if (res.ok) setStatus(await res.json());
+        if (res.ok) setStatus(await safeJson(res));
       } catch (e) {
         setStatus({ server: 'offline' });
       }

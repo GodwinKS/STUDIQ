@@ -1,4 +1,18 @@
 
+export async function safeJson(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    // Check for the typical platform "Starting Server" or "Not Found" HTML
+    if (text.includes("Starting Server") || text.includes("<!doctype html>")) {
+      throw new Error("Saathi-OS is initializing. Please wait a few seconds...");
+    }
+    console.error(`[API] Expected JSON but got ${contentType}:`, text.substring(0, 200));
+    throw new Error(`Connection Error: The bridge or server is currently unreachable. Ensure bridge.py is running.`);
+  }
+  return response.json();
+}
+
 export async function fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 3, initialDelay = 1000, timeoutMs = 30000): Promise<Response> {
   let lastError: any;
   

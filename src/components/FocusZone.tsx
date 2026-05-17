@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Square, Shield, Brain, Coffee, AlertTriangle, Search, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { analyzeFocus, useSaathiSettings } from '../lib/gemini';
-import { fetchWithRetry } from '../lib/api';
-import { cn } from '../lib/utils';
+import { fetchWithRetry, safeJson } from '../lib/api';
+import { cn } from '../utils';
 
 export function FocusZone() {
   const { isLocal } = useSaathiSettings();
@@ -16,8 +16,8 @@ export function FocusZone() {
   const [lastScreenshot, setLastScreenshot] = useState<string | null>(null);
 
   const isHardwareMutedRef = useRef(false);
-  const isHardwareBrightBoostedRef = useRef(false);
   const isHardwareDimmedRef = useRef(false);
+  const hasModifiedHardwareRef = useRef(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -26,7 +26,7 @@ export function FocusZone() {
   // Fetch initial shield status
   useEffect(() => {
     fetchWithRetry('/api/shield/status')
-      .then(res => res.json())
+      .then(res => safeJson(res))
       .then(data => setIsShieldActive(data.active))
       .catch(err => console.error('Initial shield status check failed:', err));
   }, []);
@@ -42,7 +42,7 @@ export function FocusZone() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: val })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       setIsShieldActive(data.active);
     } catch (e) {
       console.error('Failed to toggle shield:', e);
@@ -93,10 +93,10 @@ export function FocusZone() {
         fetch('/api/bridge/mute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mute: false }) }).catch(() => {});
         isHardwareMutedRef.current = false;
       }
-      if (isHardwareDimmedRef.current || isHardwareBrightBoostedRef.current) {
+      if (hasModifiedHardwareRef.current) {
         fetch('/api/bridge/dim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ percent: 90 }) }).catch(() => {});
         isHardwareDimmedRef.current = false;
-        isHardwareBrightBoostedRef.current = false;
+        hasModifiedHardwareRef.current = false;
       }
       return;
     }
@@ -108,21 +108,13 @@ export function FocusZone() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ percent: 20 })
-        }).then(() => { isHardwareDimmedRef.current = true; isHardwareBrightBoostedRef.current = false; })
-          .catch(() => {});
-      }
-    } else if (sessionScore > 9.5) {
-      // Deep focus logic
-      if (!isHardwareBrightBoostedRef.current) {
-        fetch('/api/bridge/brightness', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ adjustment: 10 })
         }).then(() => { 
-          isHardwareBrightBoostedRef.current = true;
-          isHardwareDimmedRef.current = false;
+          isHardwareDimmedRef.current = true; 
+          hasModifiedHardwareRef.current = true;
         }).catch(() => {});
       }
+    } else if (sessionScore > 9.5) {
+      // Deep focus logic - Brightness boost removed per user request
       if (!isHardwareMutedRef.current) {
         fetch('/api/bridge/mute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mute: true }) })
           .then(() => { isHardwareMutedRef.current = true; })
@@ -130,14 +122,13 @@ export function FocusZone() {
       }
     } else if (sessionScore > 7) {
       // Normal focus - Reset to standard high
-      if (isHardwareDimmedRef.current || isHardwareBrightBoostedRef.current) {
+      if (isHardwareDimmedRef.current) {
         fetch('/api/bridge/dim', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ percent: 90 }) 
         }).then(() => { 
           isHardwareDimmedRef.current = false;
-          isHardwareBrightBoostedRef.current = false;
         }).catch(() => {});
       }
       if (isHardwareMutedRef.current) {
@@ -161,10 +152,16 @@ export function FocusZone() {
           // 1. Get Screenshot
           const ssRes = await fetch('/api/bridge/screenshot');
           if (!ssRes.ok) {
-            const errData = await ssRes.json().catch(() => ({}));
+            // Gracefully handle bridge offline (502/504 ECONNREFUSED)
+            if (ssRes.status === 502 || ssRes.status === 504) {
+               console.warn("Hardware Bridge (bridge.py) is offline. Stopping auto-cycles.");
+               setIsAnalyzing(false);
+               return;
+            }
+            const errData = await safeJson(ssRes).catch(() => ({}));
             throw new Error(errData.error || "Bridge Error. Ensure bridge.py is running.");
           }
-          const ssData = await ssRes.json();
+          const ssData = await safeJson(ssRes);
           
           // 2. Get Window Titles (for better context & split-screen detection)
           let windowContext = "Unknown Activity";
@@ -172,7 +169,7 @@ export function FocusZone() {
           try {
             const winRes = await fetch('/api/bridge/windows');
             if (winRes.ok) {
-              const winData = await winRes.json();
+              const winData = await safeJson(winRes);
               windowContext = winData.active_window || winData.active_app || "Unknown";
               allVisibleWindows = winData.all_visible_windows || [];
             }
@@ -555,9 +552,6 @@ export function FocusZone() {
                         <div className="bg-purple-50 p-2 rounded-lg border border-purple-200 mt-2 animate-pulse">
                           <p className="text-[10px] font-mono text-purple-800 uppercase font-bold tracking-tight mb-1">Deep Focus Bonus:</p>
                           <div className="flex flex-wrap gap-1">
-                            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[10px] font-mono leading-none border border-purple-300">
-                              +10% Brightness Boost
-                            </span>
                             <span className="px-1.5 py-0.5 bg-purple-100 text-purple-900 rounded text-[10px] font-mono leading-none border border-purple-300">
                               Mute Active
                             </span>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { safeJson } from './api';
 
 export function useSaathiSettings() {
   const [isLocal, setIsLocal] = useState(isLocalMode());
@@ -42,7 +43,8 @@ const osControlTools: any = [
 ];
 
 export const isLocalMode = () => {
-  return true; // HARD ENFORCED: 100% Offline Mode
+  if (typeof window === 'undefined') return true;
+  return localStorage.getItem('saathi_local_mode') !== 'false'; // Default to true but allow false
 };
 
 export const getLocalModel = () => {
@@ -56,36 +58,62 @@ export const setLocalModel = (model: string) => {
 };
 
 export const setLocalMode = (enabled: boolean) => {
-  localStorage.setItem('saathi_local_mode', "true"); // Always true
+  localStorage.setItem('saathi_local_mode', enabled ? "true" : "false");
   window.dispatchEvent(new Event('saathi_settings_changed'));
 };
 
 const OLLAMA_URL = "/api/ollama/api/generate";
 
-async function callOllama(prompt: string, images?: string[]) {
-  const model = getLocalModel();
+async function callOllama(prompt: string, images?: string[], isJson: boolean = false, modelOverride?: string) {
+  const model = modelOverride || getLocalModel();
+  const body: any = {
+    model: model,
+    prompt: prompt,
+    images: images || [],
+    stream: false,
+    options: {
+      num_ctx: 8192, // Increased from 2048 for longer notes and explanations
+      temperature: 0.3,
+      num_predict: 1024, // Allow for longer responses
+    }
+  };
+
+  if (isJson) {
+    body.format = 'json';
+  }
+
   const response = await fetch(OLLAMA_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: model,
-      prompt: prompt,
-      images: images || [],
-      format: 'json', // Always try to force json format if supported
-      stream: false,
-      options: {
-        num_ctx: 2048,
-        temperature: 0.2, // Low temperature for more consistent results
-      }
-    }),
+    body: JSON.stringify(body),
   });
   
   if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || "Local Ollama server reachable but responded with error.");
+    const errData = await safeJson(response).catch(() => ({}));
+    throw new Error(errData.error || "Local Ollama server unreachable. Run 'ollama serve'.");
   }
-  const data = await response.json();
+  const data = await safeJson(response);
   return { text: () => data.response };
+}
+
+async function callCloud(prompt: string, fileBase64?: string, mimeType?: string) {
+  const response = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      fileBase64,
+      mimeType,
+      model: "gemini-2.0-flash"
+    })
+  });
+
+  if (!response.ok) {
+    const data = await safeJson(response).catch(() => ({}));
+    throw new Error(data.error || "Cloud AI Error");
+  }
+  const data = await safeJson(response);
+  return { text: () => data.text };
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 10): Promise<T> {
@@ -105,8 +133,14 @@ export async function analyzeDiagram(imageBase64: string, mimeType: string) {
     Use simple, clear language for a first-year engineering student. Format with Markdown.`;
 
     const cleanBase64 = imageBase64.replace(/^data:.*?base64,/, "");
-    const response = await callOllama(prompt, [cleanBase64]);
-    return response.text();
+    
+    if (isLocalMode()) {
+      const response = await callOllama(prompt, [cleanBase64], false, "gemma4:e2b");
+      return response.text();
+    } else {
+      const response = await callCloud(prompt, cleanBase64, mimeType);
+      return response.text();
+    }
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -122,8 +156,14 @@ export async function solveFormula(imageBase64: string, mimeType: string) {
     Use Markdown and LaTeX-style formatting for math where appropriate.`;
 
     const cleanBase64 = imageBase64.replace(/^data:.*?base64,/, "");
-    const response = await callOllama(prompt, [cleanBase64]);
-    return response.text();
+    
+    if (isLocalMode()) {
+      const response = await callOllama(prompt, [cleanBase64], false, "gemma4:e2b");
+      return response.text();
+    } else {
+      const response = await callCloud(prompt, cleanBase64, mimeType);
+      return response.text();
+    }
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -132,14 +172,20 @@ export async function solveFormula(imageBase64: string, mimeType: string) {
 export async function generateSmartNotes(fileBase64: string, mimeType: string, isHandwritten: boolean = false) {
   try {
     const isAudioVideo = mimeType.startsWith('audio/') || mimeType.startsWith('video/');
-    let prompt = `Act as Saathi-OS Study Assistant. You are currently in OFFLINE mode.
+    let prompt = `Act as Saathi-OS Study Assistant.
     Goal: Transform this media into structured study notes.
     Format: Use Markdown. Include summary, key points, and review questions.
     If handwriting, preserve the hierarchy of notes.`;
 
     const cleanBase64 = fileBase64.replace(/^data:.*?base64,/, "");
-    const response = await callOllama(prompt, [cleanBase64]);
-    return response.text();
+    
+    if (isLocalMode()) {
+      const response = await callOllama(prompt, [cleanBase64], false, "gemma4:e2b");
+      return response.text();
+    } else {
+      const response = await callCloud(prompt, cleanBase64, mimeType);
+      return response.text();
+    }
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -158,7 +204,7 @@ export async function generateSmartNotesFromUrl(url: string) {
         body: JSON.stringify({ url })
       });
       if (scrapeRes.ok) {
-        const scrapeData = await scrapeRes.json();
+        const scrapeData = await safeJson(scrapeRes);
         scrapedContent = scrapeData.text;
       }
     } catch (scrapeErr) {
@@ -169,8 +215,13 @@ export async function generateSmartNotesFromUrl(url: string) {
       throw new Error("Local Bridge Scraper failed. Is bridge.py running?");
     }
 
-    const response = await callOllama(`${promptPrefix}\n\n${scrapedContent}`);
-    return response.text();
+    if (isLocalMode()) {
+      const response = await callOllama(`${promptPrefix}\n\n${scrapedContent}`, [], false, "gemma4:e2b");
+      return response.text();
+    } else {
+      const response = await callCloud(promptPrefix + scrapedContent);
+      return response.text();
+    }
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -191,8 +242,24 @@ export async function transcribeAudioToText(audioBase64: string, mimeType: strin
       body: formData
     });
     if (!response.ok) throw new Error("Local Transcription Bridge failing.");
-    const data = await response.json();
+    const data = await safeJson(response);
     return data.text;
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
+
+export async function generateSmartNotesFromText(text: string) {
+  try {
+    const prompt = `Act as Saathi-OS. Transform this lecture transcript into structured study notes with summary, key terms, and review questions. Use Markdown.\n\nTRANSCRIPT:\n${text}`;
+    
+    if (isLocalMode()) {
+      const response = await callOllama(prompt, [], false, "gemma4:e2b");
+      return response.text();
+    } else {
+      const response = await callCloud(prompt);
+      return response.text();
+    }
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -271,6 +338,7 @@ export async function analyzeFocus(
     - DO NOT claim you cannot see external sources. The provided screenshot AND window titles ARE your sources.
     - If you see Instagram, Shorts, Reels, or clear entertainment, the focusScore MUST be between 0 and 4.
     - If you see a PDF, Code, or notes, the focusScore MUST be between 8 and 10.
+    - If no clear distraction or study tool is identified, assume a neutral focusScore of 7.
     
     ANALYSIS DATA:
     - Active Title: "${windowContext}"
@@ -278,7 +346,7 @@ export async function analyzeFocus(
     
     JSON SCHEMA:
     {
-      "thought": "Briefly describe the visual proof you see",
+      "thought": "Briefly describe the visual proof you see (what apps/content are open)",
       "focusScore": number (0-10),
       "subject": "Main subject seen (e.g. Physics, Coding, Scrolling)",
       "distractionType": "none" | "social" | "entertainment",
@@ -287,12 +355,26 @@ export async function analyzeFocus(
     }`;
 
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-    const response = await callOllama(prompt, [cleanBase64]);
-    const resText = response.text();
+    let resText = "";
+
+    if (isLocalMode()) {
+      const response = await callOllama(prompt, [cleanBase64], true, "moondream");
+      resText = response.text();
+    } else {
+      // In cloud mode, we still need JSON
+      const response = await callCloud(prompt + "\n\nONLY RETURN RAW JSON.", cleanBase64, mimeType);
+      resText = response.text();
+    }
 
     try {
       let data = JSON.parse(resText);
       
+      // If AI gave 0 for something not clearly a distraction, boost it to 7 as per user request
+      if (data.focusScore === 0 && data.distractionType === "none" && data.thought) {
+        data.focusScore = 7;
+        data.thought = (data.thought || "") + " (Sanity check: Boosted neutral description to 7)";
+      }
+
       // USER REQUEST: If "pdf" is in the thinking result, score = 9+
       const lowerAnalysis = resText.toLowerCase();
       if (lowerAnalysis.includes("pdf")) {
@@ -366,8 +448,14 @@ export async function explainImage(imageBase64: string, mimeType: string, langua
     if (customPrompt) prompt += `\n\nStudent specifically asked: "${customPrompt}"`;
 
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-    const response = await callOllama(prompt, [cleanBase64]);
-    return response.text();
+    
+    if (isLocalMode()) {
+      const response = await callOllama(prompt, [cleanBase64], false, "gemma4:e2b");
+      return response.text();
+    } else {
+      const response = await callCloud(prompt, cleanBase64, mimeType);
+      return response.text();
+    }
   } catch (err: any) {
     return handleApiError(err);
   }

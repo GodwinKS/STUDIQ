@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, Coffee, Brain, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { fetchWithRetry } from '../lib/api';
+import { fetchWithRetry, safeJson } from '../lib/api';
 
 export function CognitiveMonitor() {
   const [switches, setSwitches] = useState<number[]>([]);
@@ -38,7 +38,7 @@ export function CognitiveMonitor() {
       try {
         const res = await fetch('/api/bridge/windows');
         if (res.ok) {
-          const data = await res.json();
+          const data = await safeJson(res);
           const winName = data.active_window;
           if (winName && winName !== lastBridgeWindowRef.current) {
              // Window changed at OS level

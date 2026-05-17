@@ -41,28 +41,33 @@ async function startServer() {
   // IMPORTANT: Proxy middleware must come BEFORE body parsers to handle streams correctly
   const proxyOptions = {
     changeOrigin: true,
-    proxyTimeout: 30000, // 30s timeout for hardware
-    timeout: 30000,
-    onError: (err: any, req: any, res: any) => {
-      console.error(`[Proxy Error] ${req.url}:`, err.message);
-      res.status(502).json({ 
-        error: "Hardware Bridge Unreachable", 
-        details: err.message,
-        suggestion: "Ensure bridge.py is running locally (Port 5000) or check network." 
-      });
+    on: {
+      error: (err: any, req: any, res: any) => {
+        console.error(`[Proxy Error] ${req.url}:`, err.message);
+        if (!res.headersSent) {
+          res.status(502).json({ 
+            error: "Hardware Bridge Unreachable", 
+            details: err.message,
+            suggestion: "Ensure bridge.py is running locally (Port 5000) or check network." 
+          });
+        }
+      },
+      proxyReq: (proxyReq: any, req: any, res: any) => {
+        // Optional: Log proxy requests if needed
+      }
     }
   };
 
   app.use("/api/bridge", createProxyMiddleware({
-    ...proxyOptions,
     target: "http://127.0.0.1:5000",
     pathRewrite: { "^/api/bridge": "" },
+    ...proxyOptions
   }));
 
   app.use("/api/ollama", createProxyMiddleware({
-    ...proxyOptions,
     target: "http://127.0.0.1:11434",
     pathRewrite: { "^/api/ollama": "" },
+    ...proxyOptions
   }));
 
   app.use(express.json());

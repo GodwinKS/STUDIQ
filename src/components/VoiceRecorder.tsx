@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Mic, Square, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { safeJson } from '../lib/api';
 
 interface VoiceRecorderProps {
   onRecordingComplete: (base64: string, mimeType: string) => void;
@@ -17,7 +18,7 @@ export function VoiceRecorder({ onRecordingComplete, isProcessing }: VoiceRecord
       // Hard Bypass: Always use hardware recording in Saathi-OS for reliability
       const res = await fetch('/api/bridge/record/start', { method: 'POST' });
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
+        const errData = await safeJson(res).catch(() => ({}));
         throw new Error(errData.error || "Hardware bridge unreachable. Run bridge.py locally.");
       }
       setIsRecording(true);
@@ -35,7 +36,7 @@ export function VoiceRecorder({ onRecordingComplete, isProcessing }: VoiceRecord
       const res = await fetch('/api/bridge/record/stop', { method: 'POST' });
       if (!res.ok) throw new Error("Hardware recording failed to save or transcribe.");
       
-      const data = await res.json();
+      const data = await safeJson(res);
       if (data.status === 'success') {
         const text = data.text;
         // The parent expects a base64 for legacyReasons but we can just pass the text now

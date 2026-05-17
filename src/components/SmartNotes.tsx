@@ -2,8 +2,8 @@ import React, { useState, useRef } from 'react';
 import { FileText, Upload, X, Loader2, ChevronRight, Music, Film, Headphones, Image as ImageIcon, Link as LinkIcon, Sparkles, Mic } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
-import { generateSmartNotes, generateSmartNotesFromUrl } from '../lib/gemini';
+import { cn } from '../utils';
+import { generateSmartNotes, generateSmartNotesFromUrl, generateSmartNotesFromText, analyzeDiagram, solveFormula } from '../lib/gemini';
 import { VoiceRecorder } from './VoiceRecorder';
 
 export function SmartNotes() {
@@ -67,22 +67,9 @@ export function SmartNotes() {
     try {
       if (selectedFile) {
         let responseText;
-        const { analyzeDiagram, solveFormula, generateSmartNotes } = await import('../lib/gemini');
 
         if (selectedFile.type === 'text/plain') {
-          // If it's already text (transcribed by bridge), use a specific prompt to convert text to notes
-          const prompt = `Act as Saathi-OS. Transform this lecture transcript into structured study notes with summary, key terms, and review questions. Use Markdown.\n\nTRANSCRIPT:\n${selectedFile.base64}`;
-          const { getLocalModel } = await import('../lib/gemini');
-          const ollamaRes = await fetch('/api/ollama/api/generate', {
-            method: 'POST',
-            body: JSON.stringify({
-              model: getLocalModel(),
-              prompt: prompt,
-              stream: false
-            })
-          });
-          const data = await ollamaRes.json();
-          responseText = data.response;
+          responseText = await generateSmartNotesFromText(selectedFile.base64);
         } else if (analysisMode === 'diagram') {
           responseText = await analyzeDiagram(selectedFile.base64, selectedFile.type);
         } else if (analysisMode === 'formula') {
