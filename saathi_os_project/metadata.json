@@ -1,0 +1,12 @@
+{
+  "name": "Saathi-OS",
+  "description": "An expert educational tutor for engineering students, specializing in diagram explanations and multilingual concept clarification.",
+  "requestFramePermissions": [
+    "camera",
+    "display-capture",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

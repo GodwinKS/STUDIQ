@@ -1,0 +1,12 @@
+{
+  "name": "Saathi-OS",
+  "description": "Privacy-first, AI-powered focus and learning assistant. Features focus vision analysis, offline audio transcription, diagram explaining, and multilingual support.",
+  "requestFramePermissions": [
+    "camera",
+    "display-capture",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,24 @@
+# Saathi-OS Python Bridge Requirements
+# Install with: pip install -r requirements.txt
+
+# Core bridge server
+flask==3.1.0
+flask-cors==5.0.0
+
+# Screenshot capture (works on Linux Wayland + X11 + Windows + macOS)
+mss==9.0.2
+Pillow==11.2.1
+
+# OS control
+screen-brightness-control==0.23.0
+plyer==2.1.0
+
+# Offline audio transcription (Whisper runs fully on CPU)
+openai-whisper==20240930
+
+# Window tracking (cognitive load detection)
+pygetwindow==0.0.9
+
+# Web scraping for offline notes from URL
+requests==2.32.3
+beautifulsoup4==4.12.3
