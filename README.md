@@ -1,1 +1,1 @@
-# FOCUSY
+# STUDIQ
